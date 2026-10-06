@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Runner 3D Tablet</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="hud">
+      <span id="score">Score: 0</span>
+    </div>
+
+    <div id="game-over" class="hidden">
+      <h1>Partie terminée</h1>
+      <p id="final-score">Score: 0</p>
+      <button id="restart">Rejouer</button>
+    </div>
+
+    <div id="touch-controls">
+      <button class="control-btn" data-action="left">◀</button>
+      <button class="control-btn" data-action="jump">▲</button>
+      <button class="control-btn" data-action="right">▶</button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@r128/build/three.min.js"></script>
+    <script src="game.js"></script>
+  </body>
+</html>
