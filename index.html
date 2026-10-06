@@ -1,29 +1,465 @@
 <!DOCTYPE html>
 <html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Runner 3D Tablet</title>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <div id="hud">
-      <span id="score">Score: 0</span>
-    </div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Jeu 3D HTML</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
 
-    <div id="game-over" class="hidden">
-      <h1>Partie terminée</h1>
-      <p id="final-score">Score: 0</p>
-      <button id="restart">Rejouer</button>
-    </div>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0d1117;
+      font-family: Arial, sans-serif;
+    }
 
-    <div id="touch-controls">
-      <button class="control-btn" data-action="left">◀</button>
-      <button class="control-btn" data-action="jump">▲</button>
-      <button class="control-btn" data-action="right">▶</button>
-    </div>
+    body {
+      position: relative;
+    }
 
-    <script src="https://cdn.jsdelivr.net/npm/three@r128/build/three.min.js"></script>
-    <script src="game.js"></script>
-  </body>
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: linear-gradient(#5ec7ff, #0d1b2a);
+    }
+
+    #hud {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      z-index: 10;
+      padding: 10px 16px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.45);
+      color: white;
+      font-weight: bold;
+      font-size: 22px;
+    }
+
+    #game-over {
+      position: fixed;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      z-index: 20;
+      text-align: center;
+    }
+
+    #game-over.visible {
+      display: flex;
+    }
+
+    #game-over h1 {
+      margin: 0 0 12px 0;
+      font-size: 42px;
+    }
+
+    #final-score {
+      margin: 0 0 20px 0;
+      font-size: 26px;
+    }
+
+    #restart {
+      border: none;
+      border-radius: 12px;
+      background: #ffd166;
+      color: #111;
+      font-size: 22px;
+      font-weight: bold;
+      padding: 14px 26px;
+      cursor: pointer;
+    }
+
+    #touch-controls {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: auto;
+      display: flex;
+      justify-content: center;
+      gap: 18px;
+      z-index: 15;
+    }
+
+    .control-btn {
+      width: 78px;
+      height: 78px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.9);
+      font-size: 34px;
+      font-weight: bold;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+      color: #111;
+      cursor: pointer;
+    }
+
+    .control-btn:active {
+      transform: scale(0.96);
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">Score: <span id="score">0</span></div>
+
+  <div id="game-over">
+    <h1>Partie terminée</h1>
+    <p id="final-score">Score: 0</p>
+    <button id="restart">Rejouer</button>
+  </div>
+
+  <div id="touch-controls">
+    <button class="control-btn" data-action="left">◀</button>
+    <button class="control-btn" data-action="jump">▲</button>
+    <button class="control-btn" data-action="right">▶</button>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const hudScore = document.getElementById("score");
+    const gameOverPanel = document.getElementById("game-over");
+    const finalScore = document.getElementById("final-score");
+    const restartBtn = document.getElementById("restart");
+
+    let player = {
+      lane: 1,
+      x: 0,
+      y: 0,
+      vy: 0,
+      jumping: false,
+      groundY: 0
+    };
+
+    let obstacles = [];
+    let score = 0;
+    let gameOver = false;
+    let spawnTimer = 0;
+    let lastTime = 0;
+    let speed = 180;
+    let roadScroll = 0;
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth * window.devicePixelRatio;
+      canvas.height = window.innerHeight * window.devicePixelRatio;
+      ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+    }
+
+    function resetGame() {
+      score = 0;
+      gameOver = false;
+      spawnTimer = 1.2;
+      roadScroll = 0;
+      speed = 180;
+      player.lane = 1;
+      player.x = 0;
+      player.y = 0;
+      player.vy = 0;
+      player.jumping = false;
+      player.groundY = 0;
+      obstacles = [];
+      hudScore.textContent = "0";
+      gameOverPanel.classList.remove("visible");
+    }
+
+    function jump() {
+      if (gameOver) return;
+      if (!player.jumping) {
+        player.jumping = true;
+        player.vy = 420;
+      }
+    }
+
+    function moveLeft() {
+      if (gameOver) return;
+      player.lane = Math.max(0, player.lane - 1);
+    }
+
+    function moveRight() {
+      if (gameOver) return;
+      player.lane = Math.min(2, player.lane + 1);
+    }
+
+    function addObstacle() {
+      const lane = Math.floor(Math.random() * 3);
+      obstacles.push({
+        lane,
+        z: 1.2,
+        passed: false
+      });
+    }
+
+    function update(dt) {
+      if (gameOver) return;
+
+      roadScroll += speed * dt;
+
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        addObstacle();
+        spawnTimer = Math.max(0.7, 1.2 - score * 0.02);
+      }
+
+      if (player.jumping) {
+        player.vy -= 900 * dt;
+        player.y += player.vy * dt;
+        if (player.y <= 0) {
+          player.y = 0;
+          player.vy = 0;
+          player.jumping = false;
+        }
+      }
+
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obs = obstacles[i];
+        obs.z -= 0.75 * dt * (speed / 180);
+
+        if (!obs.passed && obs.z < 0.15) {
+          obs.passed = true;
+          score += 1;
+          hudScore.textContent = String(score);
+          speed += 5;
+        }
+
+        const sameLane = obs.lane === player.lane;
+        const closeEnough = obs.z < 0.28 && obs.z > -0.08;
+        const playerIsLow = player.y < 0.3;
+
+        if (sameLane && closeEnough && playerIsLow) {
+          gameOver = true;
+          finalScore.textContent = "Score: " + score;
+          gameOverPanel.classList.add("visible");
+        }
+
+        if (obs.z < -0.8) {
+          obstacles.splice(i, 1);
+        }
+      }
+    }
+
+    function projectX(laneIndex, z) {
+      const centerX = canvas.width / 2;
+      const roadWidth = canvas.width * 0.35;
+      const laneWidth = roadWidth / 3;
+      const baseX = centerX - roadWidth / 2 + laneWidth * laneIndex + laneWidth / 2;
+      return baseX + (laneIndex - 1) * laneWidth * z * 0.4;
+    }
+
+    function projectY(z) {
+      const horizon = canvas.height * 0.2;
+      const bottom = canvas.height * 0.85;
+      return horizon + (bottom - horizon) * (1 - z);
+    }
+
+    function drawBackground() {
+      const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      sky.addColorStop(0, "#5ec7ff");
+      sky.addColorStop(0.7, "#7ad2ff");
+      sky.addColorStop(1, "#0d1b2a");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+      ctx.beginPath();
+      ctx.arc(canvas.width * 0.8, canvas.height * 0.18, 42, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(35, 70, 100, 0.7)";
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height * 0.5);
+      ctx.lineTo(canvas.width * 0.15, canvas.height * 0.28);
+      ctx.lineTo(canvas.width * 0.28, canvas.height * 0.5);
+      ctx.lineTo(canvas.width * 0.42, canvas.height * 0.25);
+      ctx.lineTo(canvas.width * 0.58, canvas.height * 0.5);
+      ctx.lineTo(canvas.width * 0.72, canvas.height * 0.23);
+      ctx.lineTo(canvas.width * 0.85, canvas.height * 0.48);
+      ctx.lineTo(canvas.width, canvas.height * 0.5);
+      ctx.lineTo(canvas.width, canvas.height);
+      ctx.lineTo(0, canvas.height);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawRoad() {
+      const horizon = canvas.height * 0.2;
+      const bottom = canvas.height * 0.85;
+      const centerX = canvas.width / 2;
+      const roadWidth = canvas.width * 0.35;
+
+      ctx.fillStyle = "#2d2d2d";
+      ctx.beginPath();
+      ctx.moveTo(centerX - roadWidth / 2, horizon);
+      ctx.lineTo(centerX + roadWidth / 2, horizon);
+      ctx.lineTo(centerX + roadWidth * 0.6, bottom);
+      ctx.lineTo(centerX - roadWidth * 0.6, bottom);
+      ctx.closePath();
+      ctx.fill();
+
+      for (let i = 0; i < 12; i++) {
+        const t = (i * 0.18 + roadScroll * 0.004) % 1;
+        const y1 = horizon + (bottom - horizon) * t;
+        const y2 = horizon + (bottom - horizon) * (t + 0.08);
+
+        const x1a = centerX - (roadWidth / 2) * (1 - t * 0.4);
+        const x1b = centerX + (roadWidth / 2) * (1 - t * 0.4);
+        const x2a = centerX - (roadWidth / 2) * (1 - (t + 0.08) * 0.4);
+        const x2b = centerX + (roadWidth / 2) * (1 - (t + 0.08) * 0.4);
+
+        ctx.fillStyle = "#f4f4f4";
+        ctx.beginPath();
+        ctx.moveTo(x1a, y1);
+        ctx.lineTo(x1b, y1);
+        ctx.lineTo(x2b, y2);
+        ctx.lineTo(x2a, y2);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([15, 15]);
+
+      const laneWidth = roadWidth / 3;
+      for (let lane = 1; lane < 3; lane++) {
+        const startX = centerX - roadWidth / 2 + laneWidth * lane;
+        const endX = centerX - roadWidth / 2 * 0.6 + laneWidth * lane;
+        ctx.beginPath();
+        ctx.moveTo(startX, horizon);
+        ctx.lineTo(endX, bottom);
+        ctx.stroke();
+      }
+
+      ctx.setLineDash([]);
+    }
+
+    function drawObstacles() {
+      for (const obs of obstacles) {
+        const x = projectX(obs.lane, obs.z);
+        const y = projectY(obs.z) + 30;
+
+        const scale = 1 + (1 - obs.z) * 3;
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+
+        ctx.fillStyle = "#e74c3c";
+        ctx.fillRect(-20, -25, 40, 50);
+
+        ctx.fillStyle = "#87ceeb";
+        ctx.fillRect(-15, -18, 30, 12);
+
+        ctx.restore();
+      }
+    }
+
+    function drawPlayer() {
+      const laneX = projectX(player.lane, 0.1);
+      const groundY = canvas.height * 0.78;
+      const y = groundY - player.y * 25;
+
+      ctx.save();
+      ctx.translate(laneX, y);
+
+      ctx.fillStyle = "#2ecc71";
+      ctx.fillRect(-20, -24, 40, 48);
+
+      ctx.fillStyle = "#87ceeb";
+      ctx.fillRect(-15, -16, 30, 14);
+
+      ctx.fillStyle = "#222";
+      ctx.beginPath();
+      ctx.arc(-10, 18, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(10, 18, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function draw() {
+      drawBackground();
+      drawRoad();
+      drawObstacles();
+      drawPlayer();
+    }
+
+    function gameLoop(ts) {
+      const dt = Math.min((ts - lastTime) / 1000 || 0.016, 0.03);
+      lastTime = ts;
+
+      update(dt);
+      draw();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft") moveLeft();
+      if (e.key === "ArrowRight") moveRight();
+      if (e.key === "ArrowUp" || e.key === " ") jump();
+    });
+
+    document.querySelectorAll(".control-btn").forEach((btn) => {
+      btn.addEventListener("pointerdown", () => {
+        const action = btn.dataset.action;
+        if (action === "left") moveLeft();
+        if (action === "right") moveRight();
+        if (action === "jump") jump();
+      });
+    });
+
+    let touchStartX = null;
+    let touchStartY = null;
+
+    window.addEventListener("touchstart", (e) => {
+      const t = e.touches[0];
+      touchStartX = t.clientX;
+      touchStartY = t.clientY;
+    }, { passive: true });
+
+    window.addEventListener("touchend", (e) => {
+      if (touchStartX === null || touchStartY === null) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - touchStartX;
+      const dy = t.clientY - touchStartY;
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 30) moveRight();
+        else if (dx < -30) moveLeft();
+      } else {
+        if (dy < -30) jump();
+      }
+
+      touchStartX = null;
+      touchStartY = null;
+    }, { passive: true });
+
+    restartBtn.addEventListener("click", () => {
+      resetGame();
+    });
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+    resetGame();
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
 </html>
